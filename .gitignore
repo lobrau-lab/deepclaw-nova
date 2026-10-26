@@ -1,0 +1,21 @@
+# Python runtime / build artifacts
+venv/
+bin/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Local runtime data (may contain system/private logs)
+stuff/
+memory.db*
+governor_jobs.db*
+COMPACT_LOG.md
+*.log
+*.pid
+
+# Local environment / editor files
+session-*.md
+.env
+.DS_Store
+*.swp
