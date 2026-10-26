@@ -16,6 +16,7 @@ from core.lease import ResourceLease, ResourceLeaseError
 from core.classifier import classify_failure, CLASS_WORKSPACE_VIOLATION
 from core.repair import select_repair_strategy
 from core.workspace import validate_workspace_path, WorkspaceViolationError
+from core.job_store import JobStore
 
 class ExecutionResult:
     def __init__(
@@ -42,8 +43,8 @@ class ExecutionResult:
         return self.status == "COMPLETE" and self.exit_code == 0
 
 class ExecutionGovernor:
-    def __init__(self):
-        pass
+    def __init__(self, job_store: Optional[JobStore] = None):
+        self.store = job_store or JobStore()
 
     def run(
         self,
@@ -56,11 +57,13 @@ class ExecutionGovernor:
         cwd = Path(working_directory or os.getcwd())
         job_id = f"job-{int(time.time()*1000)}"
         start_time = time.time()
+        self.store.create_job(command=command, resource_class=resource_class, working_directory=str(cwd), job_id=job_id)
 
         # Step 1: Validate Workspace Boundary
         try:
             cwd = validate_workspace_path(cwd)
         except WorkspaceViolationError as wve:
+            self.store.update_status(job_id, "BLOCKED", failure_class=CLASS_WORKSPACE_VIOLATION)
             return ExecutionResult(
                 job_id=job_id,
                 status="BLOCKED",
@@ -86,6 +89,7 @@ class ExecutionGovernor:
                 try:
                     lease.acquire(blocking=True)
                 except ResourceLeaseError as rle:
+                    self.store.update_status(job_id, "BLOCKED", failure_class="GPU_CONTENTION")
                     return ExecutionResult(
                         job_id=job_id,
                         status="BLOCKED",
@@ -96,6 +100,7 @@ class ExecutionGovernor:
                         duration=time.time() - start_time,
                     )
 
+            self.store.update_status(job_id, "RUNNING")
             # Build command execution list (macOS QoS taskpolicy wrapper)
             cmd_args = self._build_exec_command(command, resource_class)
 
@@ -127,6 +132,7 @@ class ExecutionGovernor:
 
             # Step 3: Validate Outcome
             if exit_code == 0:
+                self.store.update_status(job_id, "COMPLETE")
                 return ExecutionResult(
                     job_id=job_id,
                     status="COMPLETE",
@@ -143,12 +149,15 @@ class ExecutionGovernor:
 
             if repair_strategy.can_retry and retry_count < 2:
                 retry_count += 1
+                self.store.update_status(job_id, "RECOVERING", failure_class=last_failure_class, repair_action=repair_strategy.name, increment_retry=True)
                 repair_strategy.execute({"job_id": job_id, "stderr": stderr, "stdout": stdout})
                 continue
             else:
+                final_st = "BLOCKED" if retry_count >= 2 else "FAILED"
+                self.store.update_status(job_id, final_st, failure_class=last_failure_class, repair_action=repair_strategy.name)
                 return ExecutionResult(
                     job_id=job_id,
-                    status="BLOCKED" if retry_count >= 2 else "FAILED",
+                    status=final_st,
                     exit_code=exit_code,
                     stdout=stdout,
                     stderr=stderr,

@@ -90,6 +90,8 @@ def test_execution_governor_boundaries():
     res_ok = gov.run(command="echo 'DeepClaw Nova Active'", working_directory=str(Path.home() / "workspace"))
     assert res_ok.success()
     assert "DeepClaw Nova Active" in res_ok.stdout
+    stored = gov.store.get_job(res_ok.job_id)
+    assert stored is not None and stored["status"] == "COMPLETE"
 
 def test_memory_retention_and_traces():
     store = MemoryStore()
