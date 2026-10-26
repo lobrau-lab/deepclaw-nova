@@ -313,31 +313,35 @@ class NovaVoiceAssistant:
         5. Speaks answer back to user.
         """
         memories = self.memory.search_memories(user_text, limit=3)
-        context_str = "\n".join([f"- {m['content']}" for m in memories]) if memories else "None"
+        context_str = "\n".join([f"- {m['content']}" for m in memories])
 
         system_prompt = (
             "You are Nova (Claw), an autonomous live on-device intelligence and coding agent running on Apple Silicon (M5, 32GB Unified RAM). "
             "You have direct control over macOS apps, terminal, file reading/writing/editing, search, system maintenance, governor jobs, and self-extension. "
-            "When asked to inspect files, run commands, control the computer, or build skills, use your provided tools.\n"
-            f"Relevant User Memories:\n{context_str}"
+            "When asked to inspect files, run commands, control the computer, or build skills, use your provided tools."
         )
 
         # Keep bounded multi-turn history (last 12 messages)
         if len(self.history) > 12:
             self.history = self.history[-12:]
 
+        user_payload = f"{user_text}\n\n[Relevant User Memories:\n{context_str}]" if context_str else user_text
         messages = [{"role": "system", "content": system_prompt}] + list(self.history) + [
-            {"role": "user", "content": user_text}
+            {"role": "user", "content": user_payload}
         ]
         tools = self.registry.list_definitions()
         final_content = ""
 
         for step in range(max_steps):
             try:
-                resp = self.residency.chat(messages=messages, tools=tools if step < max_steps - 1 else None)
+                resp = self.residency.chat(messages=messages, tools=tools)
                 self.last_stats = {
                     "eval_count": resp.get("eval_count", 0),
+                    "prompt_tokens": resp.get("prompt_tokens", 0),
+                    "cached_tokens": resp.get("cached_tokens", 0),
+                    "prompt_tps": resp.get("prompt_tps", 0.0),
                     "tokens_per_sec": resp.get("tokens_per_sec", 0.0),
+                    "peak_memory_gb": resp.get("peak_memory_gb", 0.0),
                     "duration_sec": resp.get("duration_sec", 0.0),
                 }
             except Exception as e:

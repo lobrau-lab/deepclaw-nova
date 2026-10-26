@@ -68,7 +68,7 @@ def cmd_ask(prompt: str, voice: bool = True):
     ans = assistant.process_command(prompt, voice_output=voice)
     st = assistant.last_stats
     if st.get("tokens_per_sec"):
-        print(f"  \033[90m[{st.get('eval_count', 0)} tok · {st['tokens_per_sec']} tok/s · {st.get('duration_sec', 0)}s]\033[0m")
+        print(f"  \033[90m[{st.get('eval_count', 0)} gen tok @ {st['tokens_per_sec']} tok/s · KV cached {st.get('cached_tokens', 0)}/{st.get('prompt_tokens', 0)} · {st.get('duration_sec', 0)}s]\033[0m")
     print(f"\033[1;32mNova:\033[0m {ans}\n")
 
 def cmd_repl(voice: bool = False):
