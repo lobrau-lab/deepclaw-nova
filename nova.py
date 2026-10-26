@@ -38,6 +38,9 @@ def cmd_status():
     print(f"  • Host Unified RAM : {metrics['used_ram_mb']:.1f} MB used / {metrics['total_ram_mb']:.1f} MB total ({metrics['avail_ram_mb']:.1f} MB free)")
     print(f"  • macOS Swap Space : {metrics['swap_used_mb']:.1f} MB active")
     print(f"  • Disk Free Space  : {health['disk_free_gb']} GB / {health['disk_total_gb']} GB")
+    print(f"  • Metal GPU Core   : {metrics.get('gpu_arch', 'Apple M5 Metal')} [ACTIVE]")
+    sme_str = "ACTIVE (FEAT_SME / SME2)" if metrics.get("cpu_sme_active") else "STANDBY"
+    print(f"  • CPU Matrix/SME   : {sme_str}")
     
     print(f"\033[1;34m[NEURAL MODEL RESIDENCY]\033[0m")
     is_res = residency.is_model_loaded()
@@ -63,7 +66,42 @@ def cmd_ask(prompt: str, voice: bool = True):
     assistant = NovaVoiceAssistant()
     print(f"\n\033[1;34mUser:\033[0m {prompt}")
     ans = assistant.process_command(prompt, voice_output=voice)
+    st = assistant.last_stats
+    if st.get("tokens_per_sec"):
+        print(f"  \033[90m[{st.get('eval_count', 0)} tok · {st['tokens_per_sec']} tok/s · {st.get('duration_sec', 0)}s]\033[0m")
     print(f"\033[1;32mNova:\033[0m {ans}\n")
+
+def cmd_repl(voice: bool = False):
+    assistant = NovaVoiceAssistant()
+    print("\033[1;35m╭─────────────────────────────────────────────────────────────╮\033[0m")
+    print("\033[1;35m│\033[0m  \033[1;37m🐺 CLAW / NOVA · Interactive Agent REPL (Apple M5 MLX)\033[0m     \033[1;35m│\033[0m")
+    print("\033[1;35m│\033[0m  Commands: \033[1;33m/clear\033[0m, \033[1;33m/status\033[0m, \033[1;33m/jobs\033[0m, \033[1;31m/exit\033[0m                     \033[1;35m│\033[0m")
+    print("\033[1;35m╰─────────────────────────────────────────────────────────────╯\033[0m")
+    while True:
+        try:
+            line = input("\n\033[1;34mclaw>\033[0m ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nExiting REPL.")
+            break
+        if not line:
+            continue
+        if line in ("/exit", "/quit"):
+            break
+        if line == "/clear":
+            assistant.reset_history()
+            print("Conversation history cleared.")
+            continue
+        if line == "/status":
+            cmd_status()
+            continue
+        if line == "/jobs":
+            cmd_jobs()
+            continue
+        ans = assistant.process_command(line, voice_output=voice)
+        st = assistant.last_stats
+        if st.get("tokens_per_sec"):
+            print(f"  \033[90m[{st.get('eval_count', 0)} tok · {st['tokens_per_sec']} tok/s · {st.get('duration_sec', 0)}s]\033[0m")
+        print(f"\033[1;32mNova:\033[0m {ans}")
 
 def cmd_live():
     print("\033[1;35mStarting DeepClaw Nova 24/7 Live Resident Voice Assistant...\033[0m")
@@ -72,18 +110,30 @@ def cmd_live():
     compactor = ContinuousCompactor()
 
     assistant.tts.speak("DeepClaw Nova online. I am listening.")
-    print("Nova is active. Speak commands or press Ctrl+C to stop.")
+    print("Nova is active. Speak commands (wake words: " + ", ".join(config.WAKE_WORDS) + ") or press Ctrl+C to stop.")
 
-    # Background periodic compaction & memory sweep loop
+    # Background periodic compaction & microphone listening loop
     last_sweep = time.time()
     try:
         while True:
+            audio_file = assistant.stt.record_microphone(duration_seconds=4)
+            if audio_file:
+                try:
+                    transcript = assistant.stt.transcribe_audio_file(audio_file).strip()
+                finally:
+                    audio_file.unlink(missing_ok=True)
+                low = transcript.lower()
+                if transcript and not transcript.startswith("[Speech") and any(w in low for w in config.WAKE_WORDS):
+                    print(f"\n\033[1;34mHeard:\033[0m {transcript}")
+                    ans = assistant.process_command(transcript, voice_output=True)
+                    print(f"\033[1;32mNova:\033[0m {ans}")
+
             # Run background sweep every 5 minutes under asymptotic backpressure
             if time.time() - last_sweep > 300:
                 compactor.run_sweep()
                 compactor.synthesize_round()
                 last_sweep = time.time()
-            time.sleep(1.0)
+            time.sleep(0.5)
     except KeyboardInterrupt:
         print("\nNova stopping gracefully.")
         assistant.residency.stop_residency_watchdog()
@@ -118,6 +168,8 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("status", help="Display hardware, memory, and model status")
+    repl_p = subparsers.add_parser("repl", help="Start interactive multi-turn agent REPL")
+    repl_p.add_argument("--voice", action="store_true", help="Enable spoken voice output in REPL")
     subparsers.add_parser("live", help="Run 24/7 live voice assistant loop")
     subparsers.add_parser("train", help="Run on-device fine-tuning round")
     subparsers.add_parser("clean", help="Clean developer and app caches")
@@ -132,6 +184,8 @@ def main():
     args = parser.parse_args()
     if args.command == "status" or not args.command:
         cmd_status()
+    elif args.command == "repl":
+        cmd_repl(voice=args.voice)
     elif args.command == "ask":
         cmd_ask(args.query, voice=not args.no_voice)
     elif args.command == "live":

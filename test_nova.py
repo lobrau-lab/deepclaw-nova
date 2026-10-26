@@ -144,6 +144,22 @@ def test_training_pipeline():
     if tmp_data.exists():
         tmp_data.unlink()
 
+def test_agent_coding_tools_and_parser():
+    from voice.assistant import NovaVoiceAssistant
+    assistant = NovaVoiceAssistant()
+    # Nested JSON tool call extraction
+    nested = '{"tool": "create_new_skill", "arguments": {"name": "x", "parameters": {"type": "object"}}}'
+    calls = assistant.residency._extract_tool_calls(nested)
+    assert len(calls) == 1 and calls[0]["function"]["arguments"]["parameters"]["type"] == "object"
+
+    # Workspace file write, read, edit, grep
+    tmp_file = Path.home() / "workspace" / "nova_tool_test.txt"
+    assert "Wrote" in assistant.registry.execute("write_file", {"path": str(tmp_file), "content": "alpha\nbeta\n"})
+    assert "1: alpha" in assistant.registry.execute("read_file", {"path": str(tmp_file)})
+    assert "Updated" in assistant.registry.execute("edit_file", {"path": str(tmp_file), "old_string": "beta", "new_string": "gamma"})
+    assert "gamma" in assistant.registry.execute("grep_content", {"pattern": "gamma", "path": str(tmp_file)})
+    tmp_file.unlink(missing_ok=True)
+
 if __name__ == "__main__":
     tests = [
         ("Telemetry & System Metrics", test_telemetry_and_memory),
@@ -155,6 +171,7 @@ if __name__ == "__main__":
         ("Autonomous Skill & Plugin Creation", test_autonomous_skill_creation),
         ("Computer Control & System Maintenance", test_computer_controller_and_system),
         ("Training Dataset Pipeline", test_training_pipeline),
+        ("Agent Coding Tools & Nested Tool Parser", test_agent_coding_tools_and_parser),
     ]
 
     all_ok = True
@@ -167,7 +184,7 @@ if __name__ == "__main__":
 
     print("=======================================================")
     if all_ok:
-        print("\033[1;32m★★★ ALL 9 ACCEPTANCE TESTS PASSED CLEANLY ★★★\033[0m\n")
+        print(f"\033[1;32m★★★ ALL {len(tests)} ACCEPTANCE TESTS PASSED CLEANLY ★★★\033[0m\n")
         sys.exit(0)
     else:
         print("\033[1;31m✗ SOME TESTS FAILED\033[0m\n")

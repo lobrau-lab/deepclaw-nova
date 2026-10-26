@@ -73,8 +73,28 @@ def _get_macos_metrics() -> Dict[str, float]:
     except Exception:
         pass
 
+    cpu_brand = "Apple Silicon"
+    sme_active = False
+    try:
+        cpu_brand = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"], timeout=2).decode().strip()
+        sme = subprocess.check_output(["sysctl", "-n", "hw.optional.arm.FEAT_SME"], timeout=2).decode().strip()
+        sme_active = (sme == "1")
+    except Exception:
+        pass
+
+    gpu_arch = "Metal GPU"
+    try:
+        import mlx.core as mx
+        info = mx.device_info()
+        gpu_arch = f"{info.get('device_name', cpu_brand)} ({info.get('architecture', 'Metal')})"
+    except Exception:
+        pass
+
     return {
         "platform": "darwin",
+        "cpu_brand": cpu_brand,
+        "gpu_arch": gpu_arch,
+        "cpu_sme_active": sme_active,
         "total_ram_mb": total_ram_mb,
         "used_ram_mb": used_mb,
         "avail_ram_mb": avail_mb,

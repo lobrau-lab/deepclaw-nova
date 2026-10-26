@@ -55,9 +55,9 @@ class ExecutionGovernor:
         env: Optional[Dict[str, str]] = None,
     ) -> ExecutionResult:
         cwd = Path(working_directory or os.getcwd())
-        job_id = f"job-{int(time.time()*1000)}"
         start_time = time.time()
-        self.store.create_job(command=command, resource_class=resource_class, working_directory=str(cwd), job_id=job_id)
+        created = self.store.create_job(command=command, resource_class=resource_class, working_directory=str(cwd))
+        job_id = created["job_id"]
 
         # Step 1: Validate Workspace Boundary
         try:

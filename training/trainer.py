@@ -24,7 +24,7 @@ class ModelTrainer:
 
     def train_lora_round(
         self,
-        base_model: str = "mlx-community/Qwen2.5-7B-Instruct-4bit",
+        base_model: str = config.DEFAULT_MODEL,
         batch_size: int = 2,
         num_iters: int = 100,
         learning_rate: float = 1e-4,
