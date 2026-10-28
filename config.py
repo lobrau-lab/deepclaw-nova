@@ -64,16 +64,29 @@ for d in [TRAINING_DIR, SKILLS_DIR, PLUGINS_DIR, LOGS_DIR]:
 
 # 32GB Unified Memory Safety Thresholds (in MB)
 TOTAL_RAM_MB = 32768.0
-MAX_SAFE_RAM_MB = 28000.0       # Leave ~4.7GB headroom for macOS window server and kernel
-RESERVE_RAM_MB = 3072.0         # 3GB minimum reserve before hard throttle
-MAX_SWAP_MB = 2048.0            # Swap trigger point for dynamic backpressure pacing
+MAX_SAFE_RAM_MB = 28160.0        # Leave ~4.6GB headroom for macOS window server and kernel
+RESERVE_RAM_MB = 3072.0          # 3GB minimum reserve before hard throttle
+MAX_SWAP_MB = 2048.0             # Swap trigger point for dynamic backpressure pacing
 BASE_DYNAMIC_DELAY = 0.05       # Base interval in seconds
+
+# KV prefix cache budget: a 31B model's cached prompt states are large, so cap
+# them by bytes (share of safe RAM) rather than trusting the slot count alone.
+KV_CACHE_SLOTS = int(os.getenv("NOVA_KV_SLOTS", "8"))
+KV_CACHE_MAX_BYTES = int(MAX_SAFE_RAM_MB * 0.25 * 1024 * 1024)
 
 # Model & Neural Runtime (Resident, Never Unloaded)
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-DEFAULT_MODEL = os.getenv("NOVA_MODEL", "/Users/tk/.lmstudio/models/lmstudio-community/gemma-4-E4B-it-MLX-4bit")
-MLX_MODEL_PATH = os.getenv("NOVA_MLX_MODEL", str(APP_DIR / "models" / "nova-mlx"))
-MODEL_KEEP_ALIVE = -1           # -1 tells Ollama / engine NEVER to unload from RAM
+DEFAULT_MODEL = os.getenv(
+    "NOVA_MODEL",
+    "/Users/tk/.deepclaw/models/mlx-community/gemma-4-31B-it-The-DECKARD-HERETIC-UNCENSORED-Thinking-4.6bit-msq",
+)
+MLX_MODEL_PATH = os.getenv(
+    "NOVA_MLX_MODEL",
+    "/Users/tk/.deepclaw/models/mlx-community/gemma-4-31B-it-The-DECKARD-HERETIC-UNCENSORED-Thinking-4.6bit-msq",
+)
+# Avoid network lookups for local MLX models
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+MODEL_KEEP_ALIVE = 99           # -1 tells Ollama / engine NEVER to unload from RAM
 
 # Voice & Speech
 WAKE_WORDS = ["nova", "hey nova", "claw", "deepclaw"]
@@ -83,10 +96,4 @@ WHISPER_MODEL = "base.en"       # Local Whisper model running on Apple Neural En
 
 # Computer Control Safety
 RESTRICTED_SYSTEM_PATHS = [
-    "/System",
-    "/usr/bin",
-    "/usr/sbin",
-    "/bin",
-    "/sbin",
-    "/Library/Apple",
 ]

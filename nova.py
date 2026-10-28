@@ -29,6 +29,12 @@ def cmd_status():
     metrics = get_system_metrics()
     health = get_system_health()
     residency = ModelResidencyManager()
+    # Pre-warm resident model to avoid first-call load latency
+    try:
+        residency.ensure_resident()
+        residency.start_residency_watchdog()
+    except Exception:
+        pass
     store = MemoryStore()
 
     print("\033[1;36m====================================================================\033[0m")

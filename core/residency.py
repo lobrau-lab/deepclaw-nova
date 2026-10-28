@@ -61,7 +61,12 @@ class ModelResidencyManager:
 
             ModelResidencyManager._model, ModelResidencyManager._tokenizer = load(self.model_name)
             ModelResidencyManager._model_name = self.model_name
-            ModelResidencyManager._lru_cache = LRUPromptCache(max_size=16)
+            try:
+                max_bytes = getattr(config, "KV_CACHE_MAX_BYTES", 1 << 63)
+                max_slots = int(os.getenv("NOVA_KV_SLOTS", getattr(config, "KV_CACHE_SLOTS", 8)))
+                ModelResidencyManager._lru_cache = LRUPromptCache(max_size=max_slots, max_bytes=max_bytes)
+            except Exception:
+                ModelResidencyManager._lru_cache = LRUPromptCache(max_size=8)
             load_dur = time.time() - start_t
             print(
                 f"🟢 [MLX Engine] Model '{self.model_name}' locked in Unified RAM ({load_dur:.2f}s). "
