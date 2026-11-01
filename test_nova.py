@@ -29,6 +29,8 @@ from tools.system import clean_system_caches, get_system_health
 from control.macos_bridge import ComputerController
 from training.dataset import DatasetBuilder
 from training.trainer import ModelTrainer
+from core.harness import get_harness_profile
+from benchmarks.harness_benchmark import run_benchmark
 
 def run_test(name, fn):
     print(f"▶ RUNNING {name}...", end=" ")
@@ -160,6 +162,32 @@ def test_agent_coding_tools_and_parser():
     assert "gamma" in assistant.registry.execute("grep_content", {"pattern": "gamma", "path": str(tmp_file)})
     tmp_file.unlink(missing_ok=True)
 
+def test_harness_boundary_and_profiles():
+    assert get_harness_profile("gemma-31b").family == "gemma"
+    assert get_harness_profile("unknown-model").family == "default"
+    result = run_benchmark()
+    assert result["passed"] == result["total"], result
+
+def test_edit_failures_are_recoverable_and_safe():
+    from voice.assistant import NovaVoiceAssistant
+    assistant = NovaVoiceAssistant()
+    outside = Path("/etc/hosts")
+    denied = assistant.registry.execute("read_file", {"path": str(outside)})
+    assert denied.startswith("Error executing tool 'read_file'")
+    target = Path.home() / "workspace" / "nova_edit_test.txt"
+    target.write_text("alpha\nbeta\n", encoding="utf-8")
+    try:
+        failed = assistant.registry.execute("edit_file", {
+            "path": str(target), "old_string": "missing", "new_string": "x"
+        })
+        assert "re-read the file" in failed
+        duplicate = assistant.registry.execute("edit_file", {
+            "path": str(target), "old_string": "a", "new_string": "x"
+        })
+        assert "not unique" in duplicate
+    finally:
+        target.unlink(missing_ok=True)
+
 if __name__ == "__main__":
     tests = [
         ("Telemetry & System Metrics", test_telemetry_and_memory),
@@ -172,6 +200,8 @@ if __name__ == "__main__":
         ("Computer Control & System Maintenance", test_computer_controller_and_system),
         ("Training Dataset Pipeline", test_training_pipeline),
         ("Agent Coding Tools & Nested Tool Parser", test_agent_coding_tools_and_parser),
+        ("Harness Boundary & Model Profiles", test_harness_boundary_and_profiles),
+        ("Recoverable Edits & Read Safety", test_edit_failures_are_recoverable_and_safe),
     ]
 
     all_ok = True

@@ -7,6 +7,7 @@ Allows hot-loading, listing, and dynamic execution of tools & autonomous plugins
 import os
 import sys
 import importlib.util
+import time
 from pathlib import Path
 from typing import Dict, Any, Callable, List, Optional
 import config
@@ -49,15 +50,54 @@ class SkillRegistry:
     def list_definitions(self) -> List[Dict[str, Any]]:
         return [s.to_ollama_definition() for s in self._skills.values()]
 
-    def execute(self, name: str, args: Dict[str, Any]) -> str:
+    def execute(self, name: str, args: Dict[str, Any], observer: Optional[Callable[[Dict[str, Any]], None]] = None) -> str:
+        started = time.monotonic()
+        event = {"tool": name, "valid": False, "success": False}
         skill = self._skills.get(name)
         if not skill:
-            return f"Error: Tool '{name}' not found. Available tools: {list(self._skills.keys())}"
+            result = f"Error: Tool '{name}' not found. Available tools: {list(self._skills.keys())}"
+            event["error"] = result
+            return self._finish_tool_event(event, result, started, observer)
+        error = self._validate_args(skill, args)
+        if error:
+            event["error"] = error
+            return self._finish_tool_event(event, error, started, observer)
         try:
             res = skill.handler(**args)
-            return str(res)
+            result = str(res)
+            event["valid"] = True
+            event["success"] = not result.startswith("Error:")
+            return self._finish_tool_event(event, result, started, observer)
         except Exception as e:
-            return f"Error executing tool '{name}': {e}"
+            result = f"Error executing tool '{name}': {e}"
+            event["valid"] = True
+            event["error"] = result
+            return self._finish_tool_event(event, result, started, observer)
+
+    @staticmethod
+    def _validate_args(skill: Skill, args: Dict[str, Any]) -> Optional[str]:
+        if not isinstance(args, dict):
+            return f"Error: Tool '{skill.name}' arguments must be a JSON object."
+        schema = skill.parameters or {}
+        missing = [key for key in schema.get("required", []) if key not in args]
+        if missing:
+            return f"Error: Tool '{skill.name}' is missing required argument(s): {', '.join(missing)}."
+        for key, value in args.items():
+            expected = schema.get("properties", {}).get(key, {}).get("type")
+            if expected == "string" and not isinstance(value, str):
+                return f"Error: Tool '{skill.name}' argument '{key}' must be a string."
+            if expected == "integer" and (isinstance(value, bool) or not isinstance(value, int)):
+                return f"Error: Tool '{skill.name}' argument '{key}' must be an integer."
+            if expected == "object" and not isinstance(value, dict):
+                return f"Error: Tool '{skill.name}' argument '{key}' must be an object."
+        return None
+
+    @staticmethod
+    def _finish_tool_event(event, result, started, observer):
+        event["duration_ms"] = round((time.monotonic() - started) * 1000, 2)
+        if observer:
+            observer({**event, "result": result[:4000]})
+        return result
 
     def load_skill_file(self, file_path: Path) -> bool:
         if not file_path.suffix == ".py":

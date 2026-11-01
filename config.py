@@ -96,4 +96,6 @@ WHISPER_MODEL = "base.en"       # Local Whisper model running on Apple Neural En
 
 # Computer Control Safety
 RESTRICTED_SYSTEM_PATHS = [
+    "/System", "/usr/bin", "/usr/sbin", "/bin", "/sbin",
+    "/Applications/Utilities", "/private/var"
 ]

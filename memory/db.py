@@ -60,6 +60,18 @@ CREATE TABLE IF NOT EXISTS skills_ledger (
 CREATE INDEX IF NOT EXISTS idx_memories_ts ON memories(timestamp);
 CREATE INDEX IF NOT EXISTS idx_compaction_path ON file_compaction(file_path);
 CREATE INDEX IF NOT EXISTS idx_training_success ON training_traces(success);
+
+CREATE TABLE IF NOT EXISTS harness_traces (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_name TEXT,
+    valid INTEGER,
+    success INTEGER,
+    duration_ms REAL,
+    error TEXT,
+    timestamp REAL
+);
+
+CREATE INDEX IF NOT EXISTS idx_harness_trace_tool ON harness_traces(tool_name);
 """
 
 class MemoryStore:
@@ -119,3 +131,15 @@ class MemoryStore:
                 (limit,)
             )
             return [dict(r) for r in cur.fetchall()]
+
+    def record_harness_trace(self, event: Dict[str, Any]) -> int:
+        with self.get_connection() as conn:
+            cur = conn.execute(
+                """INSERT INTO harness_traces
+                   (tool_name, valid, success, duration_ms, error, timestamp)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (event.get("tool", ""), int(bool(event.get("valid"))),
+                 int(bool(event.get("success"))), event.get("duration_ms", 0.0),
+                 event.get("error", ""), time.time()),
+            )
+            return cur.lastrowid

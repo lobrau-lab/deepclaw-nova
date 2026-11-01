@@ -14,6 +14,7 @@ import config
 from core.residency import ModelResidencyManager
 from core.runner import ExecutionGovernor
 from core.workspace import validate_workspace_path, is_path_in_approved_workspace
+from core.harness import build_system_prompt
 from memory.db import MemoryStore
 from control.macos_bridge import ComputerController
 from skills.registry import SkillRegistry, Skill
@@ -108,7 +109,7 @@ class NovaVoiceAssistant:
         # 5. File Edit Tool
         self.registry.register(Skill(
             name="edit_file",
-            description="Replaces exact old_string with new_string in a file inside approved workspaces.",
+            description="Reads and replaces one exact, unique old_string in a file inside approved workspaces. If it fails, re-read the file and retry with a smaller anchored block.",
             parameters={
                 "type": "object",
                 "properties": {
@@ -119,6 +120,20 @@ class NovaVoiceAssistant:
                 "required": ["path", "old_string", "new_string"]
             },
             handler=self._handle_edit_file
+        ))
+
+        self.registry.register(Skill(
+            name="verify_file",
+            description="Self-verifies that a workspace file exists and optionally contains expected_text after an edit.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File path inside approved workspace"},
+                    "expected_text": {"type": "string", "description": "Optional text that must occur in the file"},
+                },
+                "required": ["path"],
+            },
+            handler=self._handle_verify_file,
         ))
 
         # 6. Glob & Grep Tools
@@ -231,7 +246,7 @@ class NovaVoiceAssistant:
         return combined or "[Command completed with no output]"
 
     def _handle_read_file(self, path: str, offset: int = 1, limit: int = 200) -> str:
-        p = Path(path).expanduser().resolve()
+        p = validate_workspace_path(Path(path).expanduser(), operation="read")
         if not p.is_file():
             return f"Error: File not found: {p}"
         lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -250,20 +265,31 @@ class NovaVoiceAssistant:
         if not p.is_file():
             return f"Error: File not found: {p}"
         text = p.read_text(encoding="utf-8")
-        if old_string not in text:
-            return f"Error: old_string not found in {p}"
+        matches = text.count(old_string)
+        if matches == 0:
+            return f"Error: old_string not found in {p}; re-read the file and retry with an exact anchored block."
+        if matches > 1:
+            return f"Error: old_string is not unique in {p} ({matches} matches); include more surrounding context."
         p.write_text(text.replace(old_string, new_string, 1), encoding="utf-8")
         return f"Updated {p}"
 
+    def _handle_verify_file(self, path: str, expected_text: str = "") -> str:
+        p = validate_workspace_path(Path(path).expanduser(), operation="verify")
+        if not p.is_file():
+            return f"Error: Verification failed; file not found: {p}"
+        if expected_text and expected_text not in p.read_text(encoding="utf-8", errors="replace"):
+            return f"Error: Verification failed; expected text not found in {p}"
+        return f"Verified {p}"
+
     def _handle_glob_files(self, pattern: str, path: str = ".") -> str:
-        base = Path(path).expanduser().resolve()
+        base = validate_workspace_path(Path(path).expanduser(), operation="list")
         if not base.exists():
             return f"Error: Path not found: {base}"
         matches = [str(m) for m in list(base.glob(pattern))[:100]]
         return "\n".join(matches) if matches else "No matching files."
 
     def _handle_grep_content(self, pattern: str, path: str = ".") -> str:
-        base = Path(path).expanduser().resolve()
+        base = validate_workspace_path(Path(path).expanduser(), operation="search")
         rx = re.compile(pattern, re.IGNORECASE)
         hits = []
         files = [base] if base.is_file() else base.rglob("*")
@@ -315,11 +341,12 @@ class NovaVoiceAssistant:
         memories = self.memory.search_memories(user_text, limit=3)
         context_str = "\n".join([f"- {m['content']}" for m in memories])
 
-        system_prompt = (
+        base_prompt = (
             "You are Nova (Claw), an autonomous live on-device intelligence and coding agent running on Apple Silicon (M5, 32GB Unified RAM). "
             "You have direct control over macOS apps, terminal, file reading/writing/editing, search, system maintenance, governor jobs, and self-extension. "
             "When asked to inspect files, run commands, control the computer, or build skills, use your provided tools."
         )
+        system_prompt, profile = build_system_prompt(base_prompt, self.residency.model_name)
 
         # Keep bounded multi-turn history (last 12 messages)
         if len(self.history) > 12:
@@ -330,6 +357,9 @@ class NovaVoiceAssistant:
             {"role": "user", "content": user_payload}
         ]
         tools = self.registry.list_definitions()
+        for definition in tools:
+            if definition["function"]["name"] == "edit_file":
+                definition["function"]["description"] += f" Profile guidance: {profile.edit_guidance}"
         final_content = ""
 
         for step in range(max_steps):
@@ -377,7 +407,7 @@ class NovaVoiceAssistant:
                 fn_name = fn.get("name", "")
                 fn_args = fn.get("arguments", {})
                 print(f"  \033[1;33m⚡ [Tool]\033[0m \033[1;36m{fn_name}\033[0m({json.dumps(fn_args)[:100]})")
-                tool_res = self.registry.execute(fn_name, fn_args)
+                tool_res = self.registry.execute(fn_name, fn_args, observer=self.memory.record_harness_trace)
 
                 self.memory.record_trace(
                     prompt=user_text,

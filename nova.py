@@ -158,6 +158,14 @@ def cmd_clean():
     res = clean_system_caches()
     print(f"Reclaimed {res['reclaimed_mb']:.2f} MB from system caches.")
 
+def cmd_benchmark():
+    from benchmarks.harness_benchmark import run_benchmark
+    result = run_benchmark()
+    print(f"Harness benchmark: {result['passed']}/{result['total']}")
+    for name, passed in result["checks"].items():
+        print(f"  {'PASS' if passed else 'FAIL'} {name}")
+    return result["passed"] == result["total"]
+
 def cmd_jobs(status=None, limit=50):
     store = JobStore()
     jobs = store.list_jobs(limit=limit, status=status)
@@ -179,6 +187,7 @@ def main():
     subparsers.add_parser("live", help="Run 24/7 live voice assistant loop")
     subparsers.add_parser("train", help="Run on-device fine-tuning round")
     subparsers.add_parser("clean", help="Clean developer and app caches")
+    subparsers.add_parser("benchmark", help="Run deterministic harness checks")
     jobs_p = subparsers.add_parser("jobs", help="List governor jobs")
     jobs_p.add_argument("--status", type=str, default=None)
     jobs_p.add_argument("--limit", type=int, default=50)
@@ -200,6 +209,8 @@ def main():
         cmd_train()
     elif args.command == "clean":
         cmd_clean()
+    elif args.command == "benchmark":
+        raise SystemExit(0 if cmd_benchmark() else 1)
     elif args.command == "jobs":
         cmd_jobs(status=args.status, limit=args.limit)
 
