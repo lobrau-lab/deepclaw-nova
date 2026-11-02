@@ -79,6 +79,7 @@ KV_CACHE_MAX_BYTES = int(MAX_SAFE_RAM_MB * 0.25 * 1024 * 1024)
 MODEL_BACKEND = os.getenv("NOVA_MODEL_BACKEND", "omlx").lower()
 OMLX_URL = os.getenv("OMLX_URL", "http://127.0.0.1:8000").rstrip("/")
 OMLX_API_KEY = os.getenv("OMLX_API_KEY", "")
+ENABLE_OFFLINE_FALLBACK = os.getenv("NOVA_ENABLE_OFFLINE_FALLBACK", "0") == "1"
 OMLX_MODEL = os.getenv(
     "NOVA_MODEL",
     "gemma-4-E4B-it-ultra-uncensored-heretic-MLX-4bit-mixed_4_6",

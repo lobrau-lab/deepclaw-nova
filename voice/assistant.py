@@ -375,6 +375,11 @@ class NovaVoiceAssistant:
                     "duration_sec": resp.get("duration_sec", 0.0),
                 }
             except Exception as e:
+                if not config.ENABLE_OFFLINE_FALLBACK:
+                    ans = f"Nova model unavailable; no action was taken: {e}"
+                    if voice_output:
+                        self.tts.speak(ans)
+                    return ans
                 low = user_text.lower()
                 if "open" in low:
                     match = re.search(r"open\s+([a-zA-Z0-9\s]+?)(?:\s+and\s+|\.|$)", user_text, re.I)

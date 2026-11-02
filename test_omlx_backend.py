@@ -40,6 +40,7 @@ class OmlxBackendTests(unittest.TestCase):
             "gemma-4-E4B-it-ultra-uncensored-heretic-MLX-4bit-mixed_4_6",
         )
         self.assertEqual(config.MODEL_BACKEND, "omlx")
+        self.assertFalse(config.ENABLE_OFFLINE_FALLBACK)
 
     @patch("core.residency.urllib.request.urlopen", return_value=FakeResponse())
     def test_translates_openai_tool_calls(self, urlopen):
