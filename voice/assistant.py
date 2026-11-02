@@ -402,10 +402,20 @@ class NovaVoiceAssistant:
                 break
 
             tool_outputs = []
+            assistant_tool_calls = []
             for tc in tool_calls:
                 fn = tc.get("function", {})
                 fn_name = fn.get("name", "")
                 fn_args = fn.get("arguments", {})
+                call_id = tc.get("id") or f"call-{step}-{len(assistant_tool_calls)}"
+                assistant_tool_calls.append({
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": fn_name,
+                        "arguments": json.dumps(fn_args),
+                    },
+                })
                 print(f"  \033[1;33m⚡ [Tool]\033[0m \033[1;36m{fn_name}\033[0m({json.dumps(fn_args)[:100]})")
                 tool_res = self.registry.execute(fn_name, fn_args, observer=self.memory.record_harness_trace)
 
@@ -417,16 +427,19 @@ class NovaVoiceAssistant:
                     tool_result=str(tool_res)[:4000],
                     success=not str(tool_res).startswith("Error:")
                 )
-                tool_outputs.append(f"[Tool '{fn_name}' result]:\n{str(tool_res)[:6000]}")
+                tool_outputs.append({
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "name": fn_name,
+                    "content": str(tool_res)[:6000],
+                })
 
             messages.append({
                 "role": "assistant",
-                "content": json.dumps({"tool": tool_calls[0]["function"]["name"], "arguments": tool_calls[0]["function"]["arguments"]})
+                "content": msg.get("content") or None,
+                "tool_calls": assistant_tool_calls,
             })
-            messages.append({
-                "role": "user",
-                "content": "\n\n".join(tool_outputs) + "\n\nUse the tool result above to answer the user's request concisely, or call another tool if needed."
-            })
+            messages.extend(tool_outputs)
 
         self.history.append({"role": "user", "content": user_text})
         self.history.append({"role": "assistant", "content": final_content})

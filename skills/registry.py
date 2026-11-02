@@ -83,13 +83,20 @@ class SkillRegistry:
         if missing:
             return f"Error: Tool '{skill.name}' is missing required argument(s): {', '.join(missing)}."
         for key, value in args.items():
-            expected = schema.get("properties", {}).get(key, {}).get("type")
+            definition = schema.get("properties", {}).get(key)
+            if definition is None and schema.get("additionalProperties") is False:
+                return f"Error: Tool '{skill.name}' received unknown argument '{key}'."
+            definition = definition or {}
+            expected = definition.get("type")
             if expected == "string" and not isinstance(value, str):
                 return f"Error: Tool '{skill.name}' argument '{key}' must be a string."
             if expected == "integer" and (isinstance(value, bool) or not isinstance(value, int)):
                 return f"Error: Tool '{skill.name}' argument '{key}' must be an integer."
             if expected == "object" and not isinstance(value, dict):
                 return f"Error: Tool '{skill.name}' argument '{key}' must be an object."
+            allowed = definition.get("enum")
+            if allowed is not None and value not in allowed:
+                return f"Error: Tool '{skill.name}' argument '{key}' must be one of: {', '.join(map(str, allowed))}."
         return None
 
     @staticmethod
