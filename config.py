@@ -74,16 +74,22 @@ BASE_DYNAMIC_DELAY = 0.05       # Base interval in seconds
 KV_CACHE_SLOTS = int(os.getenv("NOVA_KV_SLOTS", "8"))
 KV_CACHE_MAX_BYTES = int(MAX_SAFE_RAM_MB * 0.25 * 1024 * 1024)
 
-# Model & Neural Runtime (Resident, Never Unloaded)
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-DEFAULT_MODEL = os.getenv(
+# Model & Neural Runtime
+# oMLX owns this Gemma 4 VLM and exposes an OpenAI-compatible local endpoint.
+MODEL_BACKEND = os.getenv("NOVA_MODEL_BACKEND", "omlx").lower()
+OMLX_URL = os.getenv("OMLX_URL", "http://127.0.0.1:8000").rstrip("/")
+OMLX_API_KEY = os.getenv("OMLX_API_KEY", "")
+OMLX_MODEL = os.getenv(
     "NOVA_MODEL",
-    "/Users/tk/.deepclaw/models/mlx-community/gemma-4-31B-it-The-DECKARD-HERETIC-UNCENSORED-Thinking-4.6bit-msq",
+    "gemma-4-E4B-it-ultra-uncensored-heretic-MLX-4bit-mixed_4_6",
 )
+DEFAULT_MODEL = OMLX_MODEL
 MLX_MODEL_PATH = os.getenv(
     "NOVA_MLX_MODEL",
-    "/Users/tk/.deepclaw/models/mlx-community/gemma-4-31B-it-The-DECKARD-HERETIC-UNCENSORED-Thinking-4.6bit-msq",
+    str(Path.home() / ".omlx" / "models" / "zecanard" / OMLX_MODEL),
 )
+# Retained for callers that still use the legacy Ollama configuration name.
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
 # Avoid network lookups for local MLX models
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 MODEL_KEEP_ALIVE = 99           # -1 tells Ollama / engine NEVER to unload from RAM

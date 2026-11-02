@@ -10,6 +10,8 @@ import os
 import json
 import re
 import time
+import urllib.error
+import urllib.request
 from typing import Dict, Any, Optional, List, Tuple
 import config
 
@@ -32,7 +34,7 @@ class ModelResidencyManager:
         base_url: Optional[str] = None,
     ):
         self.model_name = model_name or os.getenv("NOVA_MODEL", config.DEFAULT_MODEL)
-        self.backend = "mlx"
+        self.backend = config.MODEL_BACKEND
         self._ensure_loaded()
 
     def is_model_loaded(self) -> bool:
@@ -40,6 +42,9 @@ class ModelResidencyManager:
 
     def _ensure_loaded(self) -> bool:
         """Loads model into 32GB Unified Memory and pins it."""
+        if self.backend == "omlx":
+            ModelResidencyManager._model_name = self.model_name
+            return True
         if self.is_model_loaded():
             return True
 
@@ -100,6 +105,9 @@ class ModelResidencyManager:
         """
         Executes native MLX inference with tool schema formatting and parsing.
         """
+        if self.backend == "omlx":
+            return self._chat_omlx(messages, tools, max_tokens, temperature)
+
         self._ensure_loaded()
 
         if ModelResidencyManager._model is None or ModelResidencyManager._tokenizer is None:
@@ -235,6 +243,77 @@ class ModelResidencyManager:
             "tokens_per_sec": round(gen_tps, 1),
             "peak_memory_gb": round(peak_gb, 2),
             "duration_sec": round(dur, 2),
+        }
+
+    def _chat_omlx(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]],
+        max_tokens: int,
+        temperature: float,
+    ) -> Dict[str, Any]:
+        """Call oMLX without exposing its API key to prompts, logs, or traces."""
+        payload: Dict[str, Any] = {
+            "model": self.model_name,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        if tools:
+            payload["tools"] = tools
+
+        request = urllib.request.Request(
+            f"{config.OMLX_URL}/v1/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                **({"Authorization": f"Bearer {config.OMLX_API_KEY}"} if config.OMLX_API_KEY else {}),
+            },
+            method="POST",
+        )
+        started = time.time()
+        try:
+            with urllib.request.urlopen(request, timeout=120) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:1000]
+            raise RuntimeError(f"oMLX request failed ({exc.code}): {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"oMLX is unavailable at {config.OMLX_URL}: {exc.reason}") from exc
+
+        choice = (result.get("choices") or [{}])[0]
+        message = choice.get("message") or {}
+        tool_calls = []
+        for call in message.get("tool_calls") or []:
+            function = call.get("function") or {}
+            arguments = function.get("arguments", {})
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    arguments = {}
+            tool_calls.append({
+                "id": call.get("id", ""),
+                "type": "function",
+                "function": {
+                    "name": function.get("name", ""),
+                    "arguments": arguments,
+                },
+            })
+
+        usage = result.get("usage") or {}
+        return {
+            "message": {
+                "role": message.get("role", "assistant"),
+                "content": message.get("content", "") or "",
+                "tool_calls": tool_calls,
+            },
+            "eval_count": usage.get("completion_tokens", 0),
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "cached_tokens": usage.get("prompt_tokens_details", {}).get("cached_tokens", 0),
+            "tokens_per_sec": 0.0,
+            "duration_sec": round(time.time() - started, 2),
         }
 
     def _extract_tool_calls(self, text: str) -> List[Dict[str, Any]]:
