@@ -90,6 +90,7 @@ MODEL_BACKEND = os.getenv("NOVA_MODEL_BACKEND", "embedded").lower()
 OMLX_URL = os.getenv("OMLX_URL", "http://127.0.0.1:8000").rstrip("/")
 OMLX_API_KEY = os.getenv("OMLX_API_KEY") or _local_omlx_api_key()
 ENABLE_OFFLINE_FALLBACK = os.getenv("NOVA_ENABLE_OFFLINE_FALLBACK", "0") == "1"
+ENABLE_EXTERNAL_SKILLS = os.getenv("NOVA_ENABLE_EXTERNAL_SKILLS", "0") == "1"
 EMBEDDED_MODEL = os.getenv("NOVA_MODEL", "mlx-community/Qwen3.5-35B-A3B-4bit")
 OMLX_MODEL = os.getenv("NOVA_OMLX_MODEL", "gemma-4-E4B-it-ultra-uncensored-heretic-MLX-4bit-mixed_4_6")
 DEFAULT_MODEL = EMBEDDED_MODEL if MODEL_BACKEND == "embedded" else OMLX_MODEL

@@ -10,6 +10,7 @@ import os
 import json
 import re
 import time
+import html
 import urllib.error
 import urllib.request
 from typing import Dict, Any, Optional, List, Tuple
@@ -431,6 +432,25 @@ class ModelResidencyManager:
                 idx = end_idx
             except Exception:
                 idx = brace + 1
+
+        # Qwen3.5 may emit its native XML function-call format instead of JSON.
+        xml_call = re.compile(
+            r"<tool_call>\s*<function=([A-Za-z0-9_]+)>(.*?)</function>\s*</tool_call>",
+            re.DOTALL | re.IGNORECASE,
+        )
+        xml_param = re.compile(
+            r"<parameter=([A-Za-z0-9_]+)>(.*?)</parameter>",
+            re.DOTALL | re.IGNORECASE,
+        )
+        for name, body in xml_call.findall(text):
+            arguments = {}
+            for key, value in xml_param.findall(body):
+                value = html.unescape(value.strip())
+                try:
+                    arguments[key] = json.loads(value)
+                except json.JSONDecodeError:
+                    arguments[key] = value
+            tool_calls.append({"function": {"name": name, "arguments": arguments}})
 
         return tool_calls
 

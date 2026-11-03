@@ -39,7 +39,8 @@ class SkillRegistry:
     def __init__(self, skills_dir: Optional[Path] = None):
         self.skills_dir = skills_dir or config.SKILLS_DIR
         self._skills: Dict[str, Skill] = {}
-        self.load_all_skills()
+        if config.ENABLE_EXTERNAL_SKILLS:
+            self.load_all_skills()
 
     def register(self, skill: Skill) -> None:
         self._skills[skill.name] = skill

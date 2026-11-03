@@ -7,6 +7,18 @@ from core.residency import ModelResidencyManager
 
 
 class EmbeddedBackendTests(unittest.TestCase):
+    def test_parses_qwen_xml_tool_calls(self):
+        manager = ModelResidencyManager.__new__(ModelResidencyManager)
+        calls = manager._extract_tool_calls(
+            """<tool_call>
+<function=read_file>
+<parameter=path>/Users/tk/Desktop/example.py</parameter>
+</function>
+</tool_call>"""
+        )
+        self.assertEqual(calls[0]["function"]["name"], "read_file")
+        self.assertEqual(calls[0]["function"]["arguments"]["path"], "/Users/tk/Desktop/example.py")
+
     def test_generates_in_process_without_http(self):
         class Result:
             text = "embedded answer"
