@@ -121,20 +121,30 @@ def cmd_repl(voice: bool = False):
             print(f"  \033[90m[{st.get('eval_count', 0)} tok · {st['tokens_per_sec']} tok/s · {st.get('duration_sec', 0)}s]\033[0m")
         print(f"\033[1;32mNova:\033[0m {ans}")
 
-def cmd_live():
-    print("\033[1;35mStarting DeepClaw Nova 24/7 Live Resident Voice Assistant...\033[0m")
+def cmd_live(mode=None):
+    mode = mode or config.VOICE_MODE
+    if mode not in ("hands-free", "push-to-talk"):
+        raise ValueError("voice mode must be hands-free or push-to-talk")
+    print(f"\033[1;35mStarting DeepClaw Nova voice assistant ({mode})...\033[0m")
     assistant = NovaVoiceAssistant()
     assistant.residency.start_residency_watchdog()
     compactor = ContinuousCompactor()
 
     assistant.tts.speak("DeepClaw Nova online. I am listening.")
-    print("Nova is active. Speak commands (wake words: " + ", ".join(config.WAKE_WORDS) + ") or press Ctrl+C to stop.")
+    if mode == "hands-free":
+        print("Nova is active. Speak commands (wake words: " + ", ".join(config.WAKE_WORDS) + ") or press Ctrl+C to stop.")
+    else:
+        print("Nova is active. Press Enter to record, or type /exit to stop.")
 
     # Background periodic compaction & microphone listening loop
     last_sweep = time.time()
     try:
         while True:
-            audio_file = assistant.stt.record_microphone(duration_seconds=4)
+            if mode == "push-to-talk":
+                command = input("\n[Enter] record · [/exit] stop: ").strip().lower()
+                if command in ("/exit", "/quit"):
+                    break
+            audio_file = assistant.stt.record_microphone(duration_seconds=config.VOICE_RECORD_SECONDS)
             if audio_file:
                 try:
                     transcript = assistant.stt.transcribe_audio_file(audio_file).strip()
@@ -196,7 +206,8 @@ def main():
     subparsers.add_parser("status", help="Display hardware, memory, and model status")
     repl_p = subparsers.add_parser("repl", help="Start interactive multi-turn agent REPL")
     repl_p.add_argument("--voice", action="store_true", help="Enable spoken voice output in REPL")
-    subparsers.add_parser("live", help="Run 24/7 live voice assistant loop")
+    live_p = subparsers.add_parser("live", help="Run live voice assistant loop")
+    live_p.add_argument("--mode", choices=("hands-free", "push-to-talk"), default=None)
     subparsers.add_parser("train", help="Run on-device fine-tuning round")
     subparsers.add_parser("clean", help="Clean developer and app caches")
     subparsers.add_parser("benchmark", help="Run deterministic harness checks")
@@ -216,7 +227,7 @@ def main():
     elif args.command == "ask":
         cmd_ask(args.query, voice=not args.no_voice)
     elif args.command == "live":
-        cmd_live()
+        cmd_live(mode=args.mode)
     elif args.command == "train":
         cmd_train()
     elif args.command == "clean":

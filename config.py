@@ -119,6 +119,8 @@ WAKE_WORDS = ["nova", "hey nova", "claw", "deepclaw"]
 VOICE_NAME = "Samantha"         # Native macOS high-clarity voice (or Siri / custom)
 SPEECH_INPUT_DEVICE = None      # Default microphone
 WHISPER_MODEL = "base.en"       # Local Whisper model running on Apple Neural Engine / Metal
+VOICE_MODE = os.getenv("NOVA_VOICE_MODE", "hands-free")
+VOICE_RECORD_SECONDS = int(os.getenv("NOVA_VOICE_RECORD_SECONDS", "4"))
 
 # Computer Control Safety
 RESTRICTED_SYSTEM_PATHS = [
