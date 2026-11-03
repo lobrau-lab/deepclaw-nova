@@ -43,6 +43,17 @@ class NovaVoiceAssistant:
     def reset_history(self) -> None:
         self.history = []
 
+    @staticmethod
+    def _is_casual_request(text: str) -> bool:
+        return bool(re.fullmatch(
+            r"(?:hi|hello|hey|yo|thanks|thank you|good morning|good afternoon|good evening)[!.?, ]*",
+            text.strip().lower(),
+        ))
+
+    @staticmethod
+    def _casual_response(text: str) -> str:
+        return "You're welcome!" if text.strip().lower().startswith(("thanks", "thank you")) else "Hello! I'm ready to help."
+
     def _register_default_skills(self) -> None:
         # 1. Computer Control Tool
         self.registry.register(Skill(
@@ -338,6 +349,14 @@ class NovaVoiceAssistant:
         4. Saves interaction trace for learning & self-training.
         5. Speaks answer back to user.
         """
+        if self._is_casual_request(user_text):
+            final_content = self._casual_response(user_text)
+            self.history.append({"role": "user", "content": user_text})
+            self.history.append({"role": "assistant", "content": final_content})
+            if voice_output:
+                self.tts.speak(final_content)
+            return final_content
+
         memories = self.memory.search_memories(user_text, limit=3)
         context_str = "\n".join([f"- {m['content']}" for m in memories])
 
@@ -356,7 +375,8 @@ class NovaVoiceAssistant:
         messages = [{"role": "system", "content": system_prompt}] + list(self.history) + [
             {"role": "user", "content": user_payload}
         ]
-        tools = self.registry.list_definitions()
+        casual_request = self._is_casual_request(user_text)
+        tools = [] if casual_request else self.registry.list_definitions()
         for definition in tools:
             if definition["function"]["name"] == "edit_file":
                 definition["function"]["description"] += f" Profile guidance: {profile.edit_guidance}"
@@ -364,7 +384,11 @@ class NovaVoiceAssistant:
 
         for step in range(max_steps):
             try:
-                resp = self.residency.chat(messages=messages, tools=tools)
+                resp = self.residency.chat(
+                    messages=messages,
+                    tools=tools,
+                    max_tokens=128 if casual_request else 1024,
+                )
                 self.last_stats = {
                     "eval_count": resp.get("eval_count", 0),
                     "prompt_tokens": resp.get("prompt_tokens", 0),

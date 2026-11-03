@@ -1,9 +1,17 @@
 import unittest
 
 from skills.registry import Skill, SkillRegistry
+from voice.assistant import NovaVoiceAssistant
 
 
 class ToolContractTests(unittest.TestCase):
+    def test_casual_requests_skip_tool_mode(self):
+        self.assertTrue(NovaVoiceAssistant._is_casual_request("hello"))
+        self.assertTrue(NovaVoiceAssistant._is_casual_request("Thanks!"))
+        self.assertFalse(NovaVoiceAssistant._is_casual_request("open Safari"))
+        self.assertEqual(NovaVoiceAssistant._casual_response("hello"), "Hello! I'm ready to help.")
+        self.assertEqual(NovaVoiceAssistant._casual_response("thanks"), "You're welcome!")
+
     def test_rejects_unknown_arguments(self):
         registry = SkillRegistry()
         registry.register(Skill(
