@@ -49,11 +49,16 @@ def cmd_status():
     print(f"  • CPU Matrix/SME   : {sme_str}")
     
     print(f"\033[1;34m[NEURAL MODEL RESIDENCY]\033[0m")
-    is_res = residency.is_model_loaded()
-    res_str = "\033[1;32m● RESIDENT (LOCKED IN RAM)\033[0m" if is_res else "\033[1;31m○ STANDBY (NOT PINNED)\033[0m"
+    if config.MODEL_BACKEND == "omlx":
+        res_str = "\033[1;32m● MANAGED BY LOCAL oMLX\033[0m"
+    else:
+        is_res = residency.is_model_loaded()
+        res_str = "\033[1;32m● RESIDENT (LOCKED IN RAM)\033[0m" if is_res else "\033[1;31m○ STANDBY (NOT PINNED)\033[0m"
     print(f"  • Model Name       : {config.DEFAULT_MODEL}")
     print(f"  • Residency Status : {res_str}")
-    print(f"  • Engine Endpoint  : {config.OLLAMA_URL}")
+    endpoint = config.OMLX_URL if config.MODEL_BACKEND == "omlx" else config.OLLAMA_URL
+    print(f"  • Model Backend    : {config.MODEL_BACKEND}")
+    print(f"  • Engine Endpoint  : {endpoint}")
 
     print(f"\033[1;35m[KNOWLEDGE & MEMORY RETENTION]\033[0m")
     with store.get_connection() as conn:

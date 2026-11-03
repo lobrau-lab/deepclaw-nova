@@ -5,6 +5,7 @@ Tailored for Apple Silicon (Mac M5, 32GB Unified Memory Architecture).
 """
 
 import os
+import json
 import sqlite3
 from pathlib import Path
 
@@ -74,11 +75,21 @@ BASE_DYNAMIC_DELAY = 0.05       # Base interval in seconds
 KV_CACHE_SLOTS = int(os.getenv("NOVA_KV_SLOTS", "8"))
 KV_CACHE_MAX_BYTES = int(MAX_SAFE_RAM_MB * 0.25 * 1024 * 1024)
 
+def _local_omlx_api_key() -> str:
+    """Reuse the local oMLX key without placing credentials in source or logs."""
+    settings_path = Path.home() / ".omlx" / "settings.json"
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        return str(settings.get("auth", {}).get("api_key", ""))
+    except (OSError, ValueError, TypeError):
+        return ""
+
+
 # Model & Neural Runtime
 # oMLX owns this Gemma 4 VLM and exposes an OpenAI-compatible local endpoint.
 MODEL_BACKEND = os.getenv("NOVA_MODEL_BACKEND", "omlx").lower()
 OMLX_URL = os.getenv("OMLX_URL", "http://127.0.0.1:8000").rstrip("/")
-OMLX_API_KEY = os.getenv("OMLX_API_KEY", "")
+OMLX_API_KEY = os.getenv("OMLX_API_KEY") or _local_omlx_api_key()
 ENABLE_OFFLINE_FALLBACK = os.getenv("NOVA_ENABLE_OFFLINE_FALLBACK", "0") == "1"
 OMLX_MODEL = os.getenv(
     "NOVA_MODEL",
