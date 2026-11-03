@@ -86,24 +86,22 @@ def _local_omlx_api_key() -> str:
 
 
 # Model & Neural Runtime
-# oMLX owns this Gemma 4 VLM and exposes an OpenAI-compatible local endpoint.
-MODEL_BACKEND = os.getenv("NOVA_MODEL_BACKEND", "omlx").lower()
+MODEL_BACKEND = os.getenv("NOVA_MODEL_BACKEND", "embedded").lower()
 OMLX_URL = os.getenv("OMLX_URL", "http://127.0.0.1:8000").rstrip("/")
 OMLX_API_KEY = os.getenv("OMLX_API_KEY") or _local_omlx_api_key()
 ENABLE_OFFLINE_FALLBACK = os.getenv("NOVA_ENABLE_OFFLINE_FALLBACK", "0") == "1"
-OMLX_MODEL = os.getenv(
-    "NOVA_MODEL",
-    "gemma-4-E4B-it-ultra-uncensored-heretic-MLX-4bit-mixed_4_6",
-)
-DEFAULT_MODEL = OMLX_MODEL
+EMBEDDED_MODEL = os.getenv("NOVA_MODEL", "mlx-community/Qwen3.5-35B-A3B-4bit")
+OMLX_MODEL = os.getenv("NOVA_OMLX_MODEL", "gemma-4-E4B-it-ultra-uncensored-heretic-MLX-4bit-mixed_4_6")
+DEFAULT_MODEL = EMBEDDED_MODEL if MODEL_BACKEND == "embedded" else OMLX_MODEL
 MLX_MODEL_PATH = os.getenv(
     "NOVA_MLX_MODEL",
-    str(Path.home() / ".omlx" / "models" / "zecanard" / OMLX_MODEL),
+    EMBEDDED_MODEL,
 )
 # Retained for callers that still use the legacy Ollama configuration name.
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
-# Avoid network lookups for local MLX models
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
+# Embedded native models may need a one-time Hugging Face download.
+if os.getenv("NOVA_OFFLINE", "0") == "1":
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
 MODEL_KEEP_ALIVE = 99           # -1 tells Ollama / engine NEVER to unload from RAM
 
 # Voice & Speech

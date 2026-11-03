@@ -19,6 +19,7 @@ class ModelResidencyManager:
     _instance = None
     _model = None
     _tokenizer = None
+    _processor = None
     _model_name = None
     _lru_cache = None
     _wired_limit_mb = 0.0
@@ -35,7 +36,9 @@ class ModelResidencyManager:
     ):
         self.model_name = model_name or os.getenv("NOVA_MODEL", config.DEFAULT_MODEL)
         self.backend = config.MODEL_BACKEND
-        self._ensure_loaded()
+        # Embedded weights load on the first real inference, not when tools are inspected.
+        if self.backend != "embedded":
+            self._ensure_loaded()
 
     def is_model_loaded(self) -> bool:
         return ModelResidencyManager._model is not None
@@ -45,6 +48,8 @@ class ModelResidencyManager:
         if self.backend == "omlx":
             ModelResidencyManager._model_name = self.model_name
             return True
+        if self.backend == "embedded":
+            return self._ensure_embedded_loaded()
         if self.is_model_loaded():
             return True
 
@@ -85,6 +90,25 @@ class ModelResidencyManager:
             print(f"⚠️ [MLX Engine] Could not load '{self.model_name}' via MLX: {e}")
             return False
 
+    def _ensure_embedded_loaded(self) -> bool:
+        if ModelResidencyManager._model is not None and ModelResidencyManager._processor is not None:
+            return True
+        print(f"⚡ [Embedded MLX] Loading '{self.model_name}' inside Nova...")
+        start_t = time.time()
+        try:
+            from mlx_vlm import load
+            model, processor = load(self.model_name)
+            ModelResidencyManager._model = model
+            ModelResidencyManager._processor = processor
+            ModelResidencyManager._model_name = self.model_name
+            print(f"🟢 [Embedded MLX] Model ready ({time.time() - start_t:.2f}s).")
+            return True
+        except ImportError as exc:
+            print(f"⚠️ [Embedded MLX] mlx-vlm is unavailable in Nova's environment: {exc}")
+        except Exception as exc:
+            print(f"⚠️ [Embedded MLX] Could not load '{self.model_name}': {exc}")
+        return False
+
     def ensure_resident(self) -> bool:
         return self._ensure_loaded()
 
@@ -107,6 +131,8 @@ class ModelResidencyManager:
         """
         if self.backend == "omlx":
             return self._chat_omlx(messages, tools, max_tokens, temperature)
+        if self.backend == "embedded":
+            return self._chat_embedded(messages, tools, max_tokens, temperature)
 
         self._ensure_loaded()
 
@@ -243,6 +269,76 @@ class ModelResidencyManager:
             "tokens_per_sec": round(gen_tps, 1),
             "peak_memory_gb": round(peak_gb, 2),
             "duration_sec": round(dur, 2),
+        }
+
+    def _chat_embedded(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: Optional[List[Dict[str, Any]]],
+        max_tokens: int,
+        temperature: float,
+    ) -> Dict[str, Any]:
+        """Run MLX-VLM directly in this process; no model server is used."""
+        if not self._ensure_embedded_loaded():
+            raise RuntimeError("embedded MLX runtime is unavailable")
+
+        from mlx_vlm import stream_generate
+        from mlx_vlm.prompt_utils import apply_chat_template
+
+        formatted_messages = [dict(message) for message in messages]
+        if tools:
+            tool_instruction = (
+                "\n\nAvailable tools (use strictly when needed):\n"
+                f"```json\n{json.dumps(tools, indent=2)}\n```\n"
+                'To call a tool, respond with ONLY a JSON object in this format:\n'
+                '{"tool": "<name>", "arguments": {<args>}}\n'
+            )
+            if formatted_messages and formatted_messages[0].get("role") == "system":
+                formatted_messages[0]["content"] += tool_instruction
+            else:
+                formatted_messages.insert(0, {"role": "system", "content": tool_instruction})
+
+        prompt = apply_chat_template(
+            ModelResidencyManager._processor,
+            ModelResidencyManager._model.config,
+            formatted_messages,
+            num_images=0,
+        )
+        chunks = []
+        last = None
+        started = time.time()
+        for result in stream_generate(
+            ModelResidencyManager._model,
+            ModelResidencyManager._processor,
+            prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            enable_thinking=False,
+        ):
+            chunks.append(result.text)
+            last = result
+
+        raw_output = "".join(chunks)
+        cleaned = re.sub(
+            r"(?:<think>.*?</think>|<\|channel\>thought.*?<channel\|>)",
+            "",
+            raw_output,
+            flags=re.DOTALL,
+        ).strip()
+        tool_calls = self._extract_tool_calls(cleaned or raw_output)
+        return {
+            "message": {
+                "role": "assistant",
+                "content": cleaned if not tool_calls else "",
+                "tool_calls": tool_calls,
+            },
+            "eval_count": getattr(last, "generation_tokens", 0) if last else 0,
+            "prompt_tokens": getattr(last, "prompt_tokens", 0) if last else 0,
+            "cached_tokens": getattr(last, "cached_tokens", 0) if last else 0,
+            "prompt_tps": getattr(last, "prompt_tps", 0.0) if last else 0.0,
+            "tokens_per_sec": getattr(last, "generation_tps", 0.0) if last else 0.0,
+            "peak_memory_gb": getattr(last, "peak_memory", 0.0) if last else 0.0,
+            "duration_sec": round(time.time() - started, 2),
         }
 
     def _chat_omlx(

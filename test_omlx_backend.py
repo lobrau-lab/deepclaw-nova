@@ -34,12 +34,12 @@ class FakeResponse:
 
 
 class OmlxBackendTests(unittest.TestCase):
-    def test_default_model_is_the_installed_omlx_gemma(self):
+    def test_default_model_is_the_embedded_qwen(self):
         self.assertEqual(
             config.DEFAULT_MODEL,
-            "gemma-4-E4B-it-ultra-uncensored-heretic-MLX-4bit-mixed_4_6",
+            "mlx-community/Qwen3.5-35B-A3B-4bit",
         )
-        self.assertEqual(config.MODEL_BACKEND, "omlx")
+        self.assertEqual(config.MODEL_BACKEND, "embedded")
         self.assertFalse(config.ENABLE_OFFLINE_FALLBACK)
 
     @patch("core.residency.urllib.request.urlopen", return_value=FakeResponse())

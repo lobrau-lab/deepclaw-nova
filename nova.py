@@ -29,12 +29,13 @@ def cmd_status():
     metrics = get_system_metrics()
     health = get_system_health()
     residency = ModelResidencyManager()
-    # Pre-warm resident model to avoid first-call load latency
-    try:
-        residency.ensure_resident()
-        residency.start_residency_watchdog()
-    except Exception:
-        pass
+    # Status must remain cheap; embedded weights load on the first real request.
+    if config.MODEL_BACKEND != "embedded":
+        try:
+            residency.ensure_resident()
+            residency.start_residency_watchdog()
+        except Exception:
+            pass
     store = MemoryStore()
 
     print("\033[1;36m====================================================================\033[0m")
@@ -49,14 +50,20 @@ def cmd_status():
     print(f"  • CPU Matrix/SME   : {sme_str}")
     
     print(f"\033[1;34m[NEURAL MODEL RESIDENCY]\033[0m")
-    if config.MODEL_BACKEND == "omlx":
+    if config.MODEL_BACKEND == "embedded":
+        res_str = "\033[1;32m● EMBEDDED MLX (LAZY LOAD)\033[0m"
+    elif config.MODEL_BACKEND == "omlx":
         res_str = "\033[1;32m● MANAGED BY LOCAL oMLX\033[0m"
     else:
         is_res = residency.is_model_loaded()
         res_str = "\033[1;32m● RESIDENT (LOCKED IN RAM)\033[0m" if is_res else "\033[1;31m○ STANDBY (NOT PINNED)\033[0m"
     print(f"  • Model Name       : {config.DEFAULT_MODEL}")
     print(f"  • Residency Status : {res_str}")
-    endpoint = config.OMLX_URL if config.MODEL_BACKEND == "omlx" else config.OLLAMA_URL
+    endpoint = (
+        "in-process"
+        if config.MODEL_BACKEND == "embedded"
+        else config.OMLX_URL if config.MODEL_BACKEND == "omlx" else config.OLLAMA_URL
+    )
     print(f"  • Model Backend    : {config.MODEL_BACKEND}")
     print(f"  • Engine Endpoint  : {endpoint}")
 
