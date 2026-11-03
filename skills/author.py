@@ -34,9 +34,15 @@ def get_skill():
 '''
 
 class SkillAuthor:
-    def __init__(self, registry: Optional[SkillRegistry] = None, store: Optional[MemoryStore] = None):
+    def __init__(
+        self,
+        registry: Optional[SkillRegistry] = None,
+        store: Optional[MemoryStore] = None,
+        allow_install: Optional[bool] = None,
+    ):
         self.registry = registry or SkillRegistry()
         self.store = store or MemoryStore()
+        self.allow_install = config.ENABLE_DYNAMIC_SKILLS if allow_install is None else allow_install
 
     def generate_and_install_skill(
         self,
@@ -48,6 +54,11 @@ class SkillAuthor:
         """
         Validates, persists, compiles, and registers a brand-new skill.
         """
+        if not self.allow_install:
+            return {
+                "success": False,
+                "error": "Dynamic skill installation is disabled. Set NOVA_ENABLE_DYNAMIC_SKILLS=1 or approve it explicitly.",
+            }
         clean_name = re.sub(r"[^a-zA-Z0-9_]", "_", name.lower()).strip("_")
         skill_file = config.SKILLS_DIR / f"{clean_name}.py"
 

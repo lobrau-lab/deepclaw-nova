@@ -109,7 +109,7 @@ def test_memory_retention_and_traces():
 
 def test_autonomous_skill_creation():
     reg = SkillRegistry()
-    author = SkillAuthor(registry=reg)
+    author = SkillAuthor(registry=reg, allow_install=True)
 
     res = author.generate_and_install_skill(
         name="unit_converter",
