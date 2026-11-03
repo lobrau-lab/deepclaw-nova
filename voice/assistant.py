@@ -16,6 +16,7 @@ from core.runner import ExecutionGovernor
 from core.workspace import validate_workspace_path, is_path_in_approved_workspace
 from core.harness import build_system_prompt
 from memory.db import MemoryStore
+from memory.manager import MemoryManager
 from control.macos_bridge import ComputerController
 from skills.registry import SkillRegistry, Skill
 from skills.author import SkillAuthor
@@ -29,6 +30,7 @@ class NovaVoiceAssistant:
         self.residency = ModelResidencyManager()
         self.governor = ExecutionGovernor()
         self.memory = MemoryStore()
+        self.memory_manager = MemoryManager(self.memory)
         self.controller = ComputerController()
         self.registry = SkillRegistry()
         self.author = SkillAuthor(registry=self.registry, store=self.memory)
@@ -353,12 +355,16 @@ class NovaVoiceAssistant:
             final_content = self._casual_response(user_text)
             self.history.append({"role": "user", "content": user_text})
             self.history.append({"role": "assistant", "content": final_content})
+            self.history = self.memory_manager.rollover_if_needed(self.history)
             if voice_output:
                 self.tts.speak(final_content)
             return final_content
 
         memories = self.memory.search_memories(user_text, limit=3)
         context_str = "\n".join([f"- {m['content']}" for m in memories])
+        long_term = self.memory_manager.recall_tail()
+        if long_term:
+            context_str += f"\n\n[Long-Term Memory Markdown]\n{long_term}"
 
         base_prompt = (
             "You are Nova (Claw), an autonomous live on-device intelligence and coding agent running on Apple Silicon (M5, 32GB Unified RAM). "
@@ -472,6 +478,19 @@ class NovaVoiceAssistant:
 
         self.history.append({"role": "user", "content": user_text})
         self.history.append({"role": "assistant", "content": final_content})
+        self.history = self.memory_manager.rollover_if_needed(
+            self.history,
+            prompt_tokens=self.last_stats.get("prompt_tokens", 0),
+        )
+        try:
+            self.memory_manager.maybe_compact(self._summarize_memory)
+        except Exception as exc:
+            self.memory.record_trace(
+                prompt="memory compaction",
+                completion=str(exc),
+                tool_name="memory_manager",
+                success=False,
+            )
 
         self.memory.add_memory(f"User asked: {user_text}. Nova responded: {final_content[:150]}", category="conversation")
 
@@ -479,3 +498,23 @@ class NovaVoiceAssistant:
             self.tts.speak(final_content)
 
         return final_content
+
+    def _summarize_memory(self, source: str) -> str:
+        response = self.residency.chat(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Compact long-term memory for the user's AI co-pilot. "
+                        "Keep durable preferences, project facts, decisions, unresolved work, and useful procedures. "
+                        "Remove repetition, stale transient chatter, secrets, and unsupported claims. "
+                        "Return concise Markdown only."
+                    ),
+                },
+                {"role": "user", "content": source},
+            ],
+            tools=[],
+            max_tokens=768,
+            temperature=0.2,
+        )
+        return response.get("message", {}).get("content", "")

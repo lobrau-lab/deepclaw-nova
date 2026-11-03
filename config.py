@@ -56,6 +56,7 @@ TRAINING_DIR = APP_DIR / "training"
 SKILLS_DIR = APP_DIR / "skills"
 PLUGINS_DIR = APP_DIR / "plugins"
 LOGS_DIR = APP_DIR / "logs"
+MEMORY_MARKDOWN_PATH = APP_DIR / "memory.md"
 
 for d in [TRAINING_DIR, SKILLS_DIR, PLUGINS_DIR, LOGS_DIR]:
     try:
@@ -69,6 +70,13 @@ MAX_SAFE_RAM_MB = 28160.0        # Leave ~4.6GB headroom for macOS window server
 RESERVE_RAM_MB = 3072.0          # 3GB minimum reserve before hard throttle
 MAX_SWAP_MB = 2048.0             # Swap trigger point for dynamic backpressure pacing
 BASE_DYNAMIC_DELAY = 0.05       # Base interval in seconds
+
+# Context/memory lifecycle. Keep headroom for model KV cache and macOS.
+MAX_CONTEXT_TOKENS = int(os.getenv("NOVA_MAX_CONTEXT_TOKENS", "16384"))
+CONTEXT_ROLLOVER_RATIO = float(os.getenv("NOVA_CONTEXT_ROLLOVER_RATIO", "0.90"))
+CONTEXT_ROLLOVER_FRACTION = float(os.getenv("NOVA_CONTEXT_ROLLOVER_FRACTION", "0.40"))
+MEMORY_COMPACTION_INTERVAL_SECONDS = int(os.getenv("NOVA_MEMORY_COMPACTION_INTERVAL", "3600"))
+MEMORY_COMPACTION_MAX_CHARS = int(os.getenv("NOVA_MEMORY_MAX_CHARS", "24000"))
 
 # KV prefix cache budget: a 31B model's cached prompt states are large, so cap
 # them by bytes (share of safe RAM) rather than trusting the slot count alone.

@@ -11,6 +11,7 @@ class ToolContractTests(unittest.TestCase):
         self.assertIn("user's DeepClaw AI co-pilot", prompt)
         self.assertIn("Never lie, guess, or claim", prompt)
         self.assertIn("Persist through recoverable errors", prompt)
+        self.assertIn("read `~/.deepclaw/memory.md`", prompt)
         self.assertIn("fail closed", prompt)
 
     def test_casual_requests_skip_tool_mode(self):

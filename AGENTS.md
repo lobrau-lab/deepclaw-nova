@@ -16,6 +16,7 @@ DeepClaw Nova is a local, frozen-model coding harness. Optimize the environment 
 - Prefer the smallest relevant tool set. Do not emit every available tool schema for a simple request.
 - Use structured tool calls and proper tool-result messages; never represent tool results as synthetic user messages.
 - Keep tool results bounded and summarize large outputs before adding them to context.
+- When context is stale or a prior decision matters, use `memory_search`, then read `~/.deepclaw/memory.md` to refresh long-term context; verify remembered facts against the current repository.
 - Before editing: inspect the target, nearby tests, and one existing pattern. After editing: inspect the diff and run the narrowest useful verification.
 - For coding tasks, follow: `inspect → plan → edit → test → inspect diff → report`.
 - Never claim success from model text alone; require observable evidence from files, tests, commands, or runtime state.
