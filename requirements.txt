@@ -1,0 +1,5 @@
+# Canonical runtime dependencies for DeepClaw Nova.
+# Python 3.15 / Apple Silicon: use --no-deps because sentencepiece has no
+# compatible wheel and is not needed by Nova's native Qwen tokenizer path.
+# Install: python -m pip install --no-deps -r requirements.txt
+-r requirements-embedded.txt
