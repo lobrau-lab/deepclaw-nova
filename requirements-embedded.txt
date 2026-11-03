@@ -1,0 +1,23 @@
+# Embedded MLX runtime for Python 3.15 on Apple Silicon.
+# Install this file with: python -m pip install -r requirements-embedded.txt
+# mlx-vlm is installed without its optional server/UI/audio dependency tree;
+# Nova uses only the in-process load/apply_chat_template/stream_generate path.
+--no-deps
+mlx-vlm==0.7.11
+mlx==0.32.4
+mlx-metal==0.32.4
+transformers==5.22.1
+huggingface-hub==2.4.0
+tokenizers==0.23.3
+safetensors==0.8.0
+numpy==2.5.4
+Pillow==13.0.0
+requests==2.34.2
+jinja2==3.1.6
+tqdm==4.70.1
+llguidance==1.9.1
+pyyaml==6.0.3
+packaging==26.3
+regex==2026.9.29
+typer==0.27.3
+rich==15.0.0
