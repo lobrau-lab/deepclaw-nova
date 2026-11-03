@@ -104,17 +104,13 @@ class UnifiedMemoryGovernor:
         }
 
     def run(self, command: str, working_directory: Optional[str] = None) -> Any:
-        """Execute a shell command inside approved workspace."""
-        from subprocess import run as subprocess_run
+        """Delegate command execution to the canonical governed runner."""
+        from core.runner import ExecutionGovernor
 
-        result = subprocess_run(command, shell=True, capture_output=True, text=True, cwd=working_directory)
-        return type('Result', (), {
-            'success': lambda: result.returncode == 0,
-            'stdout': result.stdout or "",
-            'stderr': result.stderr or "",
-            'status': 'RUNNING' if result.returncode < 0 else 'COMPLETE',
-            'exit_code': result.returncode
-        })()
+        return ExecutionGovernor(job_store=self.store).run(
+            command=command,
+            working_directory=working_directory,
+        )
 
     def run_sweep(self, dry_run=False) -> Dict[str, Any]:
         """Execute memory compaction sweep."""
