@@ -2,9 +2,17 @@ import unittest
 
 from skills.registry import Skill, SkillRegistry
 from voice.assistant import NovaVoiceAssistant
+from core.harness import build_system_prompt
 
 
 class ToolContractTests(unittest.TestCase):
+    def test_system_prompt_sets_truthful_persistent_copilot_contract(self):
+        prompt, _ = build_system_prompt("base", "qwen3.5")
+        self.assertIn("user's DeepClaw AI co-pilot", prompt)
+        self.assertIn("Never lie, guess, or claim", prompt)
+        self.assertIn("Persist through recoverable errors", prompt)
+        self.assertIn("fail closed", prompt)
+
     def test_casual_requests_skip_tool_mode(self):
         self.assertTrue(NovaVoiceAssistant._is_casual_request("hello"))
         self.assertTrue(NovaVoiceAssistant._is_casual_request("Thanks!"))
